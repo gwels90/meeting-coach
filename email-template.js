@@ -27,7 +27,7 @@ function buildScoreRow(name, data) {
           </div>
           <span style="font-weight:700;color:${color};font-size:16px;min-width:32px;text-align:right;">${data.score}</span>
         </div>
-        <div style="color:#6b7280;font-size:13px;margin-top:4px;line-height:1.4;">${data.summary}</div>
+        <div style="color:#6b7280;font-size:13px;margin-top:4px;line-height:1.4;">${data.rationale}</div>
       </td>
     </tr>`;
 }
@@ -39,8 +39,9 @@ function buildDelegationFlag(flag) {
         &#x26A0;&#xFE0F; ${flag.task}
       </div>
       <div style="color:#7f1d1d;font-size:13px;">
-        <strong>Delegate to:</strong> ${flag.suggested_delegate}<br/>
-        <strong>Why:</strong> ${flag.reason}
+        <strong>Why:</strong> ${flag.why_flag}<br/>
+        <strong>Delegate to:</strong> ${flag.suggested_owner}<br/>
+        <strong>Say this:</strong> <em>"${flag.handoff_script}"</em>
       </div>
     </div>`;
 }
@@ -59,10 +60,34 @@ function buildImprovement(text) {
     </div>`;
 }
 
+function getMeetingTypeBadge(type) {
+  const colors = {
+    standup: '#6366f1',
+    strategy: '#0891b2',
+    '1on1': '#7c3aed',
+    vendor: '#ca8a04',
+    sales: '#16a34a',
+    ops: '#ea580c',
+    other: '#6b7280',
+  };
+  const bg = colors[type] || colors.other;
+  return `<span style="display:inline-block;background:${bg};color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:0.5px;">${type}</span>`;
+}
+
+function getDurationBadge(assessment) {
+  const map = {
+    'too short': { color: '#f59e0b', label: 'Too Short' },
+    'appropriate': { color: '#22c55e', label: 'Good Length' },
+    'too long': { color: '#ef4444', label: 'Too Long' },
+  };
+  const info = map[assessment] || map['appropriate'];
+  return `<span style="display:inline-block;background:${info.color};color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;letter-spacing:0.5px;">${info.label}</span>`;
+}
+
 function buildEmail(data) {
   const overallColor = getScoreColor(data.overall_score);
 
-  const dimensionRows = Object.entries(data.dimensions)
+  const scoreRows = Object.entries(data.scores)
     .map(([key, val]) => buildScoreRow(formatDimensionName(key), val))
     .join('');
 
@@ -79,19 +104,19 @@ function buildEmail(data) {
         </div>
       </div>`;
 
-  const winsHtml = data.wins.length > 0
+  const winsHtml = data.top_3_wins.length > 0
     ? `
       <div style="margin-top:28px;">
         <h2 style="color:#166534;font-size:18px;margin:0 0 12px 0;">Wins</h2>
-        ${data.wins.map(buildWin).join('')}
+        ${data.top_3_wins.map(buildWin).join('')}
       </div>`
     : '';
 
-  const improvementsHtml = data.improvements.length > 0
+  const improvementsHtml = data.top_3_improvements.length > 0
     ? `
       <div style="margin-top:28px;">
         <h2 style="color:#92400e;font-size:18px;margin:0 0 12px 0;">Areas for Improvement</h2>
-        ${data.improvements.map(buildImprovement).join('')}
+        ${data.top_3_improvements.map(buildImprovement).join('')}
       </div>`
     : '';
 
@@ -107,11 +132,14 @@ function buildEmail(data) {
     <!-- Header -->
     <div style="background:#1f2937;padding:28px 24px;text-align:center;">
       <div style="color:#9ca3af;font-size:12px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">Meeting Coach</div>
-      <h1 style="color:#ffffff;font-size:22px;margin:0 0 16px 0;line-height:1.3;">${data.title}</h1>
+      <h1 style="color:#ffffff;font-size:20px;margin:0 0 12px 0;line-height:1.3;">${data.meeting_summary}</h1>
+      <div style="margin-bottom:16px;">
+        ${getMeetingTypeBadge(data.meeting_type)} ${getDurationBadge(data.duration_assessment)}
+      </div>
       <div style="display:inline-block;background:${overallColor};color:#ffffff;font-size:36px;font-weight:800;padding:12px 28px;border-radius:12px;">
         ${data.overall_score}<span style="font-size:16px;font-weight:400;opacity:0.8">/10</span>
       </div>
-      <div style="color:#ffffff;font-size:20px;font-weight:600;margin-top:8px;">${data.grade}</div>
+      <div style="color:#ffffff;font-size:20px;font-weight:600;margin-top:8px;">${data.overall_grade}</div>
     </div>
 
     <!-- One-liner -->
@@ -122,7 +150,7 @@ function buildEmail(data) {
     <!-- Scorecard -->
     <div style="padding:8px 8px 0 8px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-        ${dimensionRows}
+        ${scoreRows}
       </table>
     </div>
 
@@ -145,7 +173,10 @@ function buildEmail(data) {
 }
 
 function getSubjectLine(data) {
-  return `Meeting Coach: ${data.title} - ${data.grade} (${data.overall_score}/10)`;
+  const title = data.meeting_summary || 'Meeting';
+  // Truncate long summaries for subject line
+  const shortTitle = title.length > 50 ? title.substring(0, 47) + '...' : title;
+  return `Meeting Coach: ${shortTitle} - ${data.overall_grade} (${data.overall_score}/10)`;
 }
 
 module.exports = { buildEmail, getSubjectLine };

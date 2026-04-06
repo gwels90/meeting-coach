@@ -133,13 +133,14 @@ function formatTranscript(meeting) {
 // Call Claude to score the transcript
 // ---------------------------------------------------------------------------
 async function scoreTranscript(transcript) {
+  const prompt = SYSTEM_PROMPT.replace('{transcript}', transcript);
+
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 2048,
     messages: [
-      { role: 'user', content: `Here is the meeting transcript to analyze:\n\n${transcript}` }
+      { role: 'user', content: prompt }
     ],
-    system: SYSTEM_PROMPT,
   });
 
   const raw = message.content[0].text.trim();
@@ -152,21 +153,23 @@ async function scoreTranscript(transcript) {
 // ---------------------------------------------------------------------------
 function fallbackScorecard(title, error) {
   return {
-    title: title || 'Unknown Meeting',
-    overall_score: 0,
-    grade: 'N/A',
-    dimensions: {
-      strategic_clarity: { score: 0, summary: 'Could not analyze.' },
-      time_discipline: { score: 0, summary: 'Could not analyze.' },
-      decision_quality: { score: 0, summary: 'Could not analyze.' },
-      delegation_execution: { score: 0, summary: 'Could not analyze.' },
-      coaching_development: { score: 0, summary: 'Could not analyze.' },
-      energy_presence: { score: 0, summary: 'Could not analyze.' },
-      meeting_necessity: { score: 0, summary: 'Could not analyze.' },
+    meeting_summary: title || 'Unknown Meeting',
+    meeting_type: 'other',
+    duration_assessment: 'appropriate',
+    scores: {
+      strategic_clarity: { score: 0, rationale: 'Could not analyze.' },
+      time_discipline: { score: 0, rationale: 'Could not analyze.' },
+      decision_quality: { score: 0, rationale: 'Could not analyze.' },
+      delegation_execution: { score: 0, rationale: 'Could not analyze.' },
+      coaching_development: { score: 0, rationale: 'Could not analyze.' },
+      energy_presence: { score: 0, rationale: 'Could not analyze.' },
+      meeting_necessity: { score: 0, rationale: 'Could not analyze.' },
     },
+    overall_score: 0,
+    overall_grade: 'N/A',
     delegation_flags: [],
-    wins: [],
-    improvements: [`Analysis failed: ${error}. Will retry on next poll cycle.`],
+    top_3_wins: [],
+    top_3_improvements: [`Analysis failed: ${error}. Will retry on next poll cycle.`],
     one_liner: 'Analysis could not be completed for this meeting.',
   };
 }
@@ -208,11 +211,11 @@ async function processMeeting(meeting) {
   let scorecard;
   try {
     scorecard = await scoreTranscript(transcript);
-    // Use Fathom's title if Claude's is generic
-    if (!scorecard.title || scorecard.title === 'Unknown Meeting') {
-      scorecard.title = title;
+    // Ensure meeting_summary has a value
+    if (!scorecard.meeting_summary) {
+      scorecard.meeting_summary = title;
     }
-    console.log(`  Scored: ${scorecard.grade} (${scorecard.overall_score}/10)`);
+    console.log(`  Scored: ${scorecard.overall_grade} (${scorecard.overall_score}/10)`);
   } catch (err) {
     console.error(`  Claude scoring failed: ${err.message}`);
     scorecard = fallbackScorecard(title, err.message);
@@ -371,10 +374,10 @@ app.post('/webhook', async (req, res) => {
     let scorecard;
     try {
       scorecard = await scoreTranscript(transcript);
-      if (!scorecard.title || scorecard.title === 'Unknown Meeting') {
-        scorecard.title = title;
+      if (!scorecard.meeting_summary) {
+        scorecard.meeting_summary = title;
       }
-      console.log(`  Scored: ${scorecard.grade} (${scorecard.overall_score}/10)`);
+      console.log(`  Scored: ${scorecard.overall_grade} (${scorecard.overall_score}/10)`);
     } catch (err) {
       console.error(`  Claude scoring failed: ${err.message}`);
       scorecard = fallbackScorecard(title, err.message);
