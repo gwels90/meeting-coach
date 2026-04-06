@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -14,6 +15,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
 const FATHOM_API_KEY = process.env.FATHOM_API_KEY;
+const FATHOM_WEBHOOK_SECRET = process.env.FATHOM_WEBHOOK_SECRET;
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '120000', 10); // 2 minutes
 
 if (!ANTHROPIC_API_KEY || !GMAIL_USER || !GMAIL_APP_PASSWORD) {
@@ -258,17 +260,69 @@ async function pollFathom() {
 }
 
 // ---------------------------------------------------------------------------
-// Express — health + manual triggers
+// Webhook signature verification
+// ---------------------------------------------------------------------------
+function verifyWebhookSignature(payload, signatureHeader) {
+  if (!FATHOM_WEBHOOK_SECRET) return true;
+  if (!signatureHeader) return false;
+
+  const expected = crypto
+    .createHmac('sha256', FATHOM_WEBHOOK_SECRET)
+    .update(payload)
+    .digest('hex');
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signatureHeader),
+      Buffer.from(expected),
+    );
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Extract transcript from webhook payload (different shape than API response)
+// ---------------------------------------------------------------------------
+function extractWebhookTranscript(body) {
+  // Array of utterances
+  if (Array.isArray(body.transcript)) {
+    return body.transcript
+      .map(e => `${e.speaker?.display_name || e.speaker || 'Speaker'}: ${e.text}`)
+      .join('\n');
+  }
+  if (typeof body.transcript === 'string') return body.transcript;
+
+  // Nested
+  if (body.data?.transcript) return extractWebhookTranscript(body.data);
+
+  // Summary fallback
+  if (body.default_summary?.markdown_formatted) {
+    return `Meeting Summary:\n${body.default_summary.markdown_formatted}`;
+  }
+  if (body.summary) return `Meeting Summary:\n${body.summary}`;
+
+  return JSON.stringify(body, null, 2);
+}
+
+// ---------------------------------------------------------------------------
+// Express — webhook + health + manual triggers
 // ---------------------------------------------------------------------------
 const app = express();
-app.use(express.json());
+
+// Capture raw body for signature verification, then parse JSON
+app.use(express.json({
+  limit: '2mb',
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 
 app.get('/', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'meeting-coach',
-    mode: 'fathom-api-polling',
+    mode: 'polling + webhook',
     poll_interval_ms: POLL_INTERVAL_MS,
+    webhook_secret_configured: !!FATHOM_WEBHOOK_SECRET,
     processed_count: processedIds.size,
     timestamp: new Date().toISOString(),
   });
@@ -276,6 +330,63 @@ app.get('/', (_req, res) => {
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
+});
+
+// ---------------------------------------------------------------------------
+// POST /webhook — instant processing when Fathom sends a webhook
+// ---------------------------------------------------------------------------
+app.post('/webhook', async (req, res) => {
+  const startTime = Date.now();
+  console.log(`[${new Date().toISOString()}] Webhook received`);
+
+  // Signature verification
+  const sig = req.headers['x-fathom-signature']
+    || req.headers['x-webhook-signature']
+    || req.headers['x-signature']
+    || req.headers['x-hook-secret'];
+
+  if (FATHOM_WEBHOOK_SECRET && !verifyWebhookSignature(req.rawBody, sig)) {
+    console.error('Webhook signature verification failed');
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // Respond immediately so Fathom doesn't retry
+  res.status(200).json({ received: true });
+
+  // Process async
+  try {
+    const body = req.body;
+    const meetingId = body.id || body.call_id || body.data?.id || Date.now().toString();
+    const title = body.title || body.meeting_title || body.data?.title || 'Untitled Meeting';
+
+    // Skip if already processed
+    if (processedIds.has(meetingId)) {
+      console.log(`  Already processed ${meetingId}, skipping`);
+      return;
+    }
+
+    const transcript = extractWebhookTranscript(body);
+    console.log(`  Transcript: ${transcript.length} chars`);
+
+    let scorecard;
+    try {
+      scorecard = await scoreTranscript(transcript);
+      if (!scorecard.title || scorecard.title === 'Unknown Meeting') {
+        scorecard.title = title;
+      }
+      console.log(`  Scored: ${scorecard.grade} (${scorecard.overall_score}/10)`);
+    } catch (err) {
+      console.error(`  Claude scoring failed: ${err.message}`);
+      scorecard = fallbackScorecard(title, err.message);
+    }
+
+    const messageId = await sendEmail(scorecard);
+    processedIds.add(meetingId);
+    saveProcessedIds(processedIds);
+    console.log(`  Email sent: ${messageId} (${Date.now() - startTime}ms)`);
+  } catch (err) {
+    console.error('Webhook processing error:', err);
+  }
 });
 
 // Manual trigger — poll Fathom right now
@@ -327,14 +438,16 @@ app.post('/reset', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`Meeting Coach running on port ${PORT}`);
   console.log(`Polling Fathom every ${POLL_INTERVAL_MS / 1000}s`);
+  console.log(`Webhook secret: ${FATHOM_WEBHOOK_SECRET ? 'configured' : 'not set'}`);
   console.log(`${processedIds.size} previously processed meeting(s) in state`);
   console.log('');
   console.log('Endpoints:');
-  console.log('  GET  /        — status');
-  console.log('  GET  /health  — health check');
-  console.log('  POST /poll    — trigger poll now');
-  console.log('  POST /test    — send test email');
-  console.log('  POST /reset   — clear processed list');
+  console.log('  GET  /         — status');
+  console.log('  GET  /health   — health check');
+  console.log('  POST /webhook  — Fathom webhook receiver');
+  console.log('  POST /poll     — trigger poll now');
+  console.log('  POST /test     — send test email');
+  console.log('  POST /reset    — clear processed list');
 
   // Initial poll on startup
   pollFathom();
