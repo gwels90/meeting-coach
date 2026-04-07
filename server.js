@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const { SYSTEM_PROMPT } = require('./prompt');
 const { buildEmail, getSubjectLine } = require('./email-template');
 
@@ -12,14 +12,15 @@ const { buildEmail, getSubjectLine } = require('./email-template');
 // ---------------------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const GMAIL_USER = process.env.GMAIL_USER;
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const EMAIL_TO = process.env.EMAIL_TO || 'gilbert@valveman.com';
+const EMAIL_FROM = process.env.EMAIL_FROM || 'Meeting Coach <onboarding@resend.dev>';
 const FATHOM_API_KEY = process.env.FATHOM_API_KEY;
 const FATHOM_WEBHOOK_SECRET = process.env.FATHOM_WEBHOOK_SECRET;
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '120000', 10); // 2 minutes
 
-if (!ANTHROPIC_API_KEY || !GMAIL_USER || !GMAIL_APP_PASSWORD) {
-  console.error('Missing required env vars: ANTHROPIC_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD');
+if (!ANTHROPIC_API_KEY || !RESEND_API_KEY) {
+  console.error('Missing required env vars: ANTHROPIC_API_KEY, RESEND_API_KEY');
   process.exit(1);
 }
 
@@ -54,16 +55,9 @@ let processedIds = loadProcessedIds();
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
 // ---------------------------------------------------------------------------
-// Gmail transporter
+// Resend email client
 // ---------------------------------------------------------------------------
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
-});
-
-transporter.verify()
-  .then(() => console.log('SMTP connection verified'))
-  .catch(err => console.error('SMTP verification failed:', err.message));
+const resend = new Resend(RESEND_API_KEY);
 
 // ---------------------------------------------------------------------------
 // Fathom API client
@@ -181,14 +175,15 @@ async function sendEmail(scorecard) {
   const html = buildEmail(scorecard);
   const subject = getSubjectLine(scorecard);
 
-  const info = await transporter.sendMail({
-    from: `"Meeting Coach" <${GMAIL_USER}>`,
-    to: GMAIL_USER,
+  const { data, error } = await resend.emails.send({
+    from: EMAIL_FROM,
+    to: EMAIL_TO,
     subject,
     html,
   });
 
-  return info.messageId;
+  if (error) throw new Error(error.message);
+  return data.id;
 }
 
 // ---------------------------------------------------------------------------
