@@ -127,11 +127,17 @@ function formatTranscript(meeting) {
 // Call Claude to score the transcript
 // ---------------------------------------------------------------------------
 async function scoreTranscript(transcript) {
-  const prompt = SYSTEM_PROMPT.replace('{transcript}', transcript);
+  // Truncate very long transcripts to avoid token limits (keep ~50K chars)
+  const maxChars = 50000;
+  const trimmed = transcript.length > maxChars
+    ? transcript.substring(0, maxChars) + '\n\n[Transcript truncated — original was ' + transcript.length + ' chars]'
+    : transcript;
+
+  const prompt = SYSTEM_PROMPT.replace('{transcript}', trimmed);
 
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
+    max_tokens: 4096,
     messages: [
       { role: 'user', content: prompt }
     ],
