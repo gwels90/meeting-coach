@@ -38,8 +38,7 @@ if (!ANTHROPIC_API_KEY || !RESEND_API_KEY) {
 }
 
 if (!FATHOM_API_KEY) {
-  console.error('Missing FATHOM_API_KEY — get it from Fathom > Settings > API Access');
-  process.exit(1);
+  console.warn('WARNING: FATHOM_API_KEY not set — polling disabled. Webhooks still work.');
 }
 
 // ---------------------------------------------------------------------------
@@ -618,8 +617,16 @@ app.listen(PORT, () => {
   console.log('  POST /test                — send test email');
   console.log('  POST /reset               — clear processed list');
 
-  // Initial poll on startup
-  pollFathom();
+  // Heartbeat so we can tell if the process is alive
+  setInterval(() => {
+    console.log(`[heartbeat] ${new Date().toISOString()} — process alive, ${processedIds.size} processed`);
+  }, 30000);
+
+  // Delay initial poll by 10s to let Railway's proxy connect first
+  setTimeout(() => {
+    console.log('Starting initial Fathom poll...');
+    pollFathom().catch(err => console.error('Initial poll failed:', err));
+  }, 10000);
 
   // Then poll on interval
   setInterval(pollFathom, POLL_INTERVAL_MS);
