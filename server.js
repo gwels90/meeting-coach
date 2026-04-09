@@ -938,11 +938,11 @@ function getSetupPage() {
         <p class="subtitle">We'll use this to personalize your coaching and send your scorecards.</p>
         <div class="input-group">
           <label for="userName">Full Name</label>
-          <input type="text" id="userName" placeholder="e.g. Kurt Hanusa" autocomplete="name"/>
+          <input type="text" id="userName" placeholder="e.g. Gil Welsford" autocomplete="name"/>
         </div>
         <div class="input-group">
           <label for="userEmail">Email Address</label>
-          <input type="email" id="userEmail" placeholder="e.g. kurt@valveman.com" autocomplete="email"/>
+          <input type="email" id="userEmail" placeholder="e.g. gilbert@valveman.com" autocomplete="email"/>
         </div>
         <div class="btn-row">
           <button class="btn btn-secondary" onclick="goTo(1)">Back</button>
