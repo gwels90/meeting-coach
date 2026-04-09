@@ -1018,6 +1018,9 @@ function getSetupPage() {
           <strong>Next step:</strong> Copy the URL above and paste it into your Fathom webhook settings.<br/>
           Go to <strong>Fathom &rarr; Settings &rarr; Integrations &rarr; Webhooks</strong> and add a new webhook with this URL. That's it &mdash; you'll start getting coaching emails after your next recorded meeting.
         </div>
+        <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-top:12px;font-size:0.88rem;line-height:1.5;color:#1e40af;">
+          <strong>Don't have Fathom yet?</strong> Fathom is the AI meeting assistant that records and transcribes your calls. Download it free at <a href="https://fathom.video/download" target="_blank" rel="noopener" style="color:#1B3A5C;font-weight:600;text-decoration:underline;">fathom.video/download</a>
+        </div>
       </div>
 
     </div>
