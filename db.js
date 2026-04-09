@@ -1,76 +1,76 @@
 // ---------------------------------------------------------------------------
-// SQLite database — user profiles for multi-tenant meeting coach
+// JSON file database — user profiles for multi-tenant meeting coach
+// No native dependencies — works on any platform (Railway, Heroku, etc.)
 // ---------------------------------------------------------------------------
-const Database = require('better-sqlite3');
+const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-const DB_PATH = path.join(__dirname, 'meeting-coach.db');
-const db = new Database(DB_PATH);
+const DB_FILE = path.join(__dirname, '.users.json');
 
-// WAL mode for better concurrent read performance
-db.pragma('journal_mode = WAL');
+function loadDb() {
+  try {
+    const data = fs.readFileSync(DB_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return { users: [], nextId: 1 };
+  }
+}
 
-// Create users table
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('sales_rep', 'sales_manager', 'executive', 'marketing')),
-    webhook_id TEXT UNIQUE NOT NULL,
-    custom_context TEXT DEFAULT '',
-    active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now')),
-    meetings_processed INTEGER DEFAULT 0
-  )
-`);
-
-// ---------------------------------------------------------------------------
-// Prepared statements
-// ---------------------------------------------------------------------------
-const stmts = {
-  insert: db.prepare(`
-    INSERT INTO users (name, email, role, webhook_id, custom_context)
-    VALUES (@name, @email, @role, @webhook_id, @custom_context)
-  `),
-  getByWebhookId: db.prepare(
-    'SELECT * FROM users WHERE webhook_id = ? AND active = 1'
-  ),
-  getById: db.prepare('SELECT * FROM users WHERE id = ?'),
-  getAll: db.prepare('SELECT * FROM users ORDER BY created_at DESC'),
-  incrementMeetings: db.prepare(
-    'UPDATE users SET meetings_processed = meetings_processed + 1 WHERE id = ?'
-  ),
-  toggleActive: db.prepare(
-    'UPDATE users SET active = CASE WHEN active = 1 THEN 0 ELSE 1 END WHERE id = ?'
-  ),
-};
+function saveDb(db) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+}
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 function createUser({ name, email, role, custom_context = '' }) {
+  const db = loadDb();
   const webhook_id = uuidv4();
-  const result = stmts.insert.run({ name, email, role, webhook_id, custom_context });
-  return { id: result.lastInsertRowid, webhook_id };
+  const user = {
+    id: db.nextId++,
+    name,
+    email,
+    role,
+    webhook_id,
+    custom_context,
+    active: 1,
+    created_at: new Date().toISOString(),
+    meetings_processed: 0,
+  };
+  db.users.push(user);
+  saveDb(db);
+  return { id: user.id, webhook_id };
 }
 
 function findByWebhookId(webhookId) {
-  return stmts.getByWebhookId.get(webhookId);
+  const db = loadDb();
+  return db.users.find(u => u.webhook_id === webhookId && u.active === 1) || null;
 }
 
 function listUsers() {
-  return stmts.getAll.all();
+  const db = loadDb();
+  return [...db.users].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
 
 function incrementMeetingCount(userId) {
-  stmts.incrementMeetings.run(userId);
+  const db = loadDb();
+  const user = db.users.find(u => u.id === userId);
+  if (user) {
+    user.meetings_processed++;
+    saveDb(db);
+  }
 }
 
 function toggleActive(userId) {
-  stmts.toggleActive.run(userId);
-  return stmts.getById.get(userId);
+  const db = loadDb();
+  const user = db.users.find(u => u.id === userId);
+  if (user) {
+    user.active = user.active === 1 ? 0 : 1;
+    saveDb(db);
+    return user;
+  }
+  return null;
 }
 
 module.exports = {
