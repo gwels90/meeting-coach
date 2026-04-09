@@ -595,7 +595,7 @@ app.post('/reset', (_req, res) => {
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   const users = db.listUsers();
   console.log(`Meeting Coach running on port ${PORT}`);
   console.log(`Polling Fathom every ${POLL_INTERVAL_MS / 1000}s`);
