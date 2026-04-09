@@ -1,3 +1,13 @@
+// ---------------------------------------------------------------------------
+// Catch uncaught errors so Railway doesn't silently kill the process
+// ---------------------------------------------------------------------------
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err.message, err.stack);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION:', err);
+});
+
 const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
