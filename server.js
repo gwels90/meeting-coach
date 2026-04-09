@@ -984,7 +984,7 @@ function getSetupPage() {
         <p class="subtitle">Add anything you want your coach to know. This makes feedback more relevant to your situation.</p>
         <div class="input-group">
           <label for="customContext">Your Context</label>
-          <textarea id="customContext" placeholder="Examples:&#10;- My direct reports are Josh, Cleon, and Amr&#10;- My Q2 goal is $500K in new bookings&#10;- I'm focused on the oil &amp; gas vertical this quarter"></textarea>
+          <textarea id="customContext" placeholder="Examples:&#10;- My direct reports are [names]&#10;- My quarterly goal is [target]&#10;- I'm focused on [key project or vertical] this quarter"></textarea>
         </div>
         <div class="btn-row">
           <button class="btn btn-secondary" onclick="goTo(3)">Back</button>
