@@ -18,6 +18,8 @@ const { SYSTEM_PROMPT } = require('./prompt');
 const { buildEmail, getSubjectLine } = require('./email-template');
 const { getPromptForUser, getDimensionsForRole } = require('./prompts');
 const db = require('./db');
+const archive = require('./archive');
+const rollup = require('./rollup');
 
 // ---------------------------------------------------------------------------
 // Config
@@ -407,6 +409,20 @@ app.post('/webhook', async (req, res) => {
     processedIds.add(meetingId);
     saveProcessedIds(processedIds);
     console.log(`  Email sent: ${messageId} (${Date.now() - startTime}ms)`);
+
+    // Best-effort archive save — never blocks or breaks the email flow
+    archive.saveMeeting({
+      user: {
+        name: 'Gilbert Welsford',
+        email: EMAIL_TO,
+        role: 'executive',
+      },
+      meetingId,
+      title,
+      date: new Date(),
+      scorecard,
+      transcript,
+    }).catch(err => console.error('[archive] background save failed:', err.message));
   } catch (err) {
     console.error('Webhook processing error:', err);
   }
@@ -469,6 +485,16 @@ app.post('/webhook/:webhookId', async (req, res) => {
     saveProcessedIds(processedIds);
     db.incrementMeetingCount(user.id);
     console.log(`  Email sent to ${user.email}: ${messageId} (${Date.now() - startTime}ms)`);
+
+    // Best-effort archive save — never blocks or breaks the email flow
+    archive.saveMeeting({
+      user,
+      meetingId,
+      title,
+      date: new Date(),
+      scorecard,
+      transcript,
+    }).catch(err => console.error('[archive] background save failed:', err.message));
   } catch (err) {
     console.error('Webhook processing error:', err);
   }
@@ -527,6 +553,58 @@ app.put('/api/users/:id/toggle', requireAdmin, (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
   res.json(user);
+});
+
+// ---------------------------------------------------------------------------
+// POST /rollup/all — run weekly rollup for every active user (admin only)
+// ---------------------------------------------------------------------------
+app.post('/rollup/all', requireAdmin, async (req, res) => {
+  const daysBack = parseInt(req.query.days || '7', 10);
+  console.log(`[rollup] manual trigger: all users, ${daysBack} days back`);
+  try {
+    const users = db.listUsers();
+    const results = await rollup.runRollupForAll({
+      users,
+      anthropic,
+      resend,
+      emailFrom: EMAIL_FROM,
+      gilEmail: EMAIL_TO,
+      daysBack,
+    });
+    res.json({ success: true, results });
+  } catch (err) {
+    console.error('[rollup] /rollup/all failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /rollup/:userId — run weekly rollup for one user (admin only)
+// ---------------------------------------------------------------------------
+app.post('/rollup/:userId', requireAdmin, async (req, res) => {
+  const userId = parseInt(req.params.userId, 10);
+  const daysBack = parseInt(req.query.days || '7', 10);
+  const users = db.listUsers();
+  const user = users.find(u => u.id === userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  console.log(`[rollup] manual trigger: ${user.name}, ${daysBack} days back`);
+  try {
+    const result = await rollup.runRollupForUser({
+      user,
+      anthropic,
+      resend,
+      emailFrom: EMAIL_FROM,
+      gilEmail: EMAIL_TO,
+      daysBack,
+    });
+    res.json({ success: true, result });
+  } catch (err) {
+    console.error(`[rollup] /rollup/${userId} failed:`, err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -613,9 +691,12 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('  GET  /admin               — admin dashboard');
   console.log('  POST /api/users           — create user');
   console.log('  GET  /api/users           — list users (admin)');
+  console.log('  POST /rollup/all          — weekly rollup, all users (admin)');
+  console.log('  POST /rollup/:userId      — weekly rollup, one user (admin)');
   console.log('  POST /poll                — trigger poll now');
   console.log('  POST /test                — send test email');
   console.log('  POST /reset               — clear processed list');
+  console.log(`Archive: ${archive.isEnabled() ? 'enabled' : 'DISABLED (missing GITHUB_TOKEN or GITHUB_ARCHIVE_REPO)'}`);
 
   // Heartbeat so we can tell if the process is alive
   setInterval(() => {
@@ -630,6 +711,36 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Then poll on interval
   setInterval(pollFathom, POLL_INTERVAL_MS);
+
+  // Weekly rollup cron — runs Monday 7:00 AM America/New_York for all users.
+  // Check every minute; fire once when the window opens. De-duped by tracking
+  // the last fire date so we don't double-fire within the same minute.
+  let lastRollupFireDate = null;
+  setInterval(async () => {
+    try {
+      const nowET = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const isMonday = nowET.getDay() === 1;
+      const is7am = nowET.getHours() === 7 && nowET.getMinutes() === 0;
+      const fireKey = `${nowET.getFullYear()}-${nowET.getMonth()}-${nowET.getDate()}`;
+
+      if (isMonday && is7am && lastRollupFireDate !== fireKey) {
+        lastRollupFireDate = fireKey;
+        console.log('[rollup] Monday 7am ET — running weekly rollup for all active users');
+        const users = db.listUsers();
+        const results = await rollup.runRollupForAll({
+          users,
+          anthropic,
+          resend,
+          emailFrom: EMAIL_FROM,
+          gilEmail: EMAIL_TO,
+          daysBack: 7,
+        });
+        console.log(`[rollup] weekly cron complete: ${results.length} user(s) processed`);
+      }
+    } catch (err) {
+      console.error('[rollup] cron error:', err.message);
+    }
+  }, 60 * 1000);
 });
 
 
