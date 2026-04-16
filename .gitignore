@@ -4,3 +4,4 @@ node_modules/
 *.db
 .users.json
 .processed-meetings.json
+.prompts.json

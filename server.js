@@ -18,6 +18,7 @@ const { SYSTEM_PROMPT } = require('./prompt');
 const { buildEmail, getSubjectLine } = require('./email-template');
 const { getPromptForUser, getDimensionsForRole } = require('./prompts');
 const db = require('./db');
+const promptsDb = require('./prompts-db');
 const archive = require('./archive');
 const rollup = require('./rollup');
 
@@ -608,6 +609,75 @@ app.post('/rollup/:userId', requireAdmin, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/prompts — return all 4 prompts (admin only)
+// ---------------------------------------------------------------------------
+app.get('/api/prompts', requireAdmin, (_req, res) => {
+  try {
+    const prompts = promptsDb.getAllPrompts();
+    res.json(prompts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/prompts/:role — return prompt for a specific role (admin only)
+// ---------------------------------------------------------------------------
+app.get('/api/prompts/:role', requireAdmin, (req, res) => {
+  const { role } = req.params;
+  if (!promptsDb.VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: `Invalid role: ${role}` });
+  }
+  try {
+    const prompt = promptsDb.getPrompt(role);
+    if (!prompt) {
+      return res.status(404).json({ error: 'Prompt not found' });
+    }
+    res.json(prompt);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/prompts/:role — update prompt text (admin only)
+// ---------------------------------------------------------------------------
+app.post('/api/prompts/:role', requireAdmin, (req, res) => {
+  const { role } = req.params;
+  const { prompt_text } = req.body;
+  if (!promptsDb.VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: `Invalid role: ${role}` });
+  }
+  if (!prompt_text || typeof prompt_text !== 'string') {
+    return res.status(400).json({ error: 'prompt_text is required' });
+  }
+  try {
+    const saved = promptsDb.savePrompt(role, prompt_text);
+    console.log(`[prompts] Updated prompt for ${role}`);
+    res.json(saved);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/prompts/:role/reset — reset to hardcoded default (admin only)
+// ---------------------------------------------------------------------------
+app.post('/api/prompts/:role/reset', requireAdmin, (req, res) => {
+  const { role } = req.params;
+  if (!promptsDb.VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: `Invalid role: ${role}` });
+  }
+  try {
+    const saved = promptsDb.resetPrompt(role);
+    console.log(`[prompts] Reset prompt for ${role} to default`);
+    res.json(saved);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /setup — setup wizard page
 // ---------------------------------------------------------------------------
 app.get('/setup', (_req, res) => {
@@ -674,6 +744,9 @@ app.post('/reset', (_req, res) => {
 // Start
 // ---------------------------------------------------------------------------
 app.listen(PORT, '0.0.0.0', () => {
+  // Seed prompts table on first start
+  promptsDb.seedPrompts();
+
   const users = db.listUsers();
   console.log(`Meeting Coach running on port ${PORT}`);
   console.log(`Polling Fathom every ${POLL_INTERVAL_MS / 1000}s`);
@@ -693,6 +766,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('  GET  /api/users           — list users (admin)');
   console.log('  POST /rollup/all          — weekly rollup, all users (admin)');
   console.log('  POST /rollup/:userId      — weekly rollup, one user (admin)');
+  console.log('  GET  /api/prompts         — list all prompts (admin)');
+  console.log('  GET  /api/prompts/:role   — get prompt for role (admin)');
+  console.log('  POST /api/prompts/:role   — update prompt (admin)');
+  console.log('  POST /api/prompts/:role/reset — reset to default (admin)');
   console.log('  POST /poll                — trigger poll now');
   console.log('  POST /test                — send test email');
   console.log('  POST /reset               — clear processed list');
@@ -1502,6 +1579,184 @@ function getAdminPage() {
       color: #9ca3af;
     }
     .empty-state p { font-size: 0.95rem; margin-bottom: 16px; }
+
+    /* Prompt Editor */
+    .prompt-section {
+      margin-top: 24px;
+    }
+    .prompt-card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+    .prompt-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .prompt-header h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1B3A5C;
+    }
+    .prompt-warning {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin: 16px 20px 0;
+      font-size: 0.82rem;
+      color: #92400e;
+      line-height: 1.5;
+    }
+    .prompt-warning strong { color: #78350f; }
+    .prompt-tabs {
+      display: flex;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0 20px;
+      gap: 0;
+    }
+    .prompt-tab {
+      padding: 10px 18px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #6b7280;
+      cursor: pointer;
+      border: none;
+      background: none;
+      border-bottom: 2px solid transparent;
+      font-family: inherit;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .prompt-tab:hover { color: #1B3A5C; }
+    .prompt-tab.active {
+      color: #1B3A5C;
+      border-bottom-color: #1B3A5C;
+    }
+    .prompt-editor-body {
+      padding: 20px;
+    }
+    .prompt-textarea {
+      width: 100%;
+      min-height: 600px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      padding: 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      resize: vertical;
+      color: #1a1a1a;
+      background: #fafafa;
+    }
+    .prompt-textarea:focus {
+      outline: none;
+      border-color: #1B3A5C;
+      box-shadow: 0 0 0 3px rgba(27,58,92,0.1);
+      background: #fff;
+    }
+    .prompt-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .prompt-last-edited {
+      font-size: 0.78rem;
+      color: #9ca3af;
+    }
+    .prompt-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .prompt-btn {
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .prompt-btn-save {
+      background: #1B3A5C;
+      color: #fff;
+    }
+    .prompt-btn-save:hover { background: #142d48; }
+    .prompt-btn-save:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    .prompt-btn-reset {
+      background: #fff;
+      color: #ef4444;
+      border: 1px solid #fca5a5;
+    }
+    .prompt-btn-reset:hover {
+      background: #fef2f2;
+    }
+    .prompt-save-status {
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-left: 8px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .prompt-save-status.visible { opacity: 1; }
+    .prompt-save-status.success { color: #059669; }
+    .prompt-save-status.error { color: #ef4444; }
+
+    /* Placeholder preview */
+    .prompt-preview {
+      margin-top: 16px;
+      padding: 14px 16px;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+    }
+    .prompt-preview h4 {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      margin-bottom: 10px;
+    }
+    .placeholder-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .placeholder-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.82rem;
+      font-family: 'Courier New', Courier, monospace;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+    }
+    .placeholder-item .check {
+      color: #22c55e;
+      font-weight: 700;
+    }
+    .placeholder-item .missing {
+      color: #ef4444;
+      font-weight: 700;
+    }
+    .placeholder-warning {
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: #fef2f2;
+      border: 1px solid #fca5a5;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: #991b1b;
+    }
   </style>
 </head>
 <body>
@@ -1554,6 +1809,40 @@ function getAdminPage() {
           </div>
         </div>
       </div>
+
+      <!-- Coaching Prompts Editor -->
+      <div class="prompt-section">
+        <div class="prompt-card">
+          <div class="prompt-header">
+            <h2>Coaching Prompts</h2>
+          </div>
+          <div class="prompt-warning">
+            <strong>Warning:</strong> Changes take effect immediately for all future meetings. Active users will get the updated prompt on their next meeting.
+          </div>
+          <div class="prompt-tabs" id="promptTabs">
+            <button class="prompt-tab active" data-role="sales_rep" onclick="switchPromptTab('sales_rep')">Sales Rep</button>
+            <button class="prompt-tab" data-role="sales_manager" onclick="switchPromptTab('sales_manager')">Sales Manager</button>
+            <button class="prompt-tab" data-role="executive" onclick="switchPromptTab('executive')">Executive</button>
+            <button class="prompt-tab" data-role="marketing" onclick="switchPromptTab('marketing')">Marketing</button>
+          </div>
+          <div class="prompt-editor-body">
+            <textarea class="prompt-textarea" id="promptTextarea" spellcheck="false" placeholder="Loading prompt..."></textarea>
+            <div class="prompt-meta">
+              <div class="prompt-last-edited" id="promptLastEdited"></div>
+              <div class="prompt-actions">
+                <button class="prompt-btn prompt-btn-reset" onclick="resetPrompt()">Reset to Default</button>
+                <button class="prompt-btn prompt-btn-save" id="promptSaveBtn" onclick="savePrompt()">Save</button>
+                <span class="prompt-save-status" id="promptSaveStatus"></span>
+              </div>
+            </div>
+            <div class="prompt-preview" id="promptPreview">
+              <h4>Placeholder Detection</h4>
+              <div class="placeholder-list" id="placeholderList"></div>
+              <div id="placeholderWarning"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1578,6 +1867,7 @@ function getAdminPage() {
         document.getElementById('loginOverlay').classList.add('hidden');
         document.getElementById('dashboard').classList.add('visible');
         loadUsers();
+        loadPrompts();
       } catch (err) {
         document.getElementById('loginError').style.display = 'block';
       }
@@ -1664,6 +1954,184 @@ function getAdminPage() {
       const d = document.createElement('div');
       d.textContent = s;
       return d.innerHTML;
+    }
+
+    // -----------------------------------------------------------------------
+    // Prompt Editor
+    // -----------------------------------------------------------------------
+    let promptCache = {};
+    let currentRole = 'sales_rep';
+    let promptDirty = false;
+
+    async function loadPrompts() {
+      try {
+        const res = await fetch('/api/prompts', {
+          headers: { 'x-admin-password': adminPw },
+        });
+        if (!res.ok) return;
+        const prompts = await res.json();
+        promptCache = {};
+        for (const p of prompts) {
+          promptCache[p.role] = p;
+        }
+        displayPrompt(currentRole);
+      } catch (err) {
+        console.error('Failed to load prompts:', err);
+      }
+    }
+
+    function switchPromptTab(role) {
+      if (promptDirty && !confirm('You have unsaved changes. Switch tab anyway?')) {
+        return;
+      }
+      currentRole = role;
+      document.querySelectorAll('.prompt-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.role === role);
+      });
+      displayPrompt(role);
+      promptDirty = false;
+    }
+
+    function displayPrompt(role) {
+      const data = promptCache[role];
+      const textarea = document.getElementById('promptTextarea');
+      const lastEdited = document.getElementById('promptLastEdited');
+
+      if (data) {
+        textarea.value = data.prompt_text;
+        if (data.last_edited) {
+          const d = new Date(data.last_edited);
+          lastEdited.textContent = 'Last edited: ' + d.toLocaleString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric',
+            hour: 'numeric', minute: '2-digit',
+          });
+        } else {
+          lastEdited.textContent = '';
+        }
+      } else {
+        textarea.value = '';
+        lastEdited.textContent = '';
+      }
+      updatePlaceholderPreview();
+      promptDirty = false;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const textarea = document.getElementById('promptTextarea');
+      if (textarea) {
+        textarea.addEventListener('input', () => {
+          promptDirty = true;
+          updatePlaceholderPreview();
+        });
+      }
+    });
+
+    function updatePlaceholderPreview() {
+      const text = document.getElementById('promptTextarea').value;
+      const placeholders = ['{transcript}', '{name}', '{custom_context}'];
+      const listEl = document.getElementById('placeholderList');
+      const warnEl = document.getElementById('placeholderWarning');
+
+      let html = '';
+      let transcriptMissing = false;
+
+      for (const p of placeholders) {
+        const found = text.includes(p);
+        if (p === '{transcript}' && !found) transcriptMissing = true;
+        const icon = found
+          ? '<span class="check">&#10003;</span>'
+          : '<span class="missing">&#10007;</span>';
+        html += '<span class="placeholder-item">' + icon + ' ' + esc(p) + '</span>';
+      }
+      listEl.innerHTML = html;
+
+      if (transcriptMissing) {
+        warnEl.innerHTML = '<div class="placeholder-warning"><strong>Warning:</strong> The <code>{transcript}</code> placeholder is missing. Without it, the meeting transcript will not be included in the prompt and scoring will fail.</div>';
+      } else {
+        warnEl.innerHTML = '';
+      }
+    }
+
+    async function savePrompt() {
+      const btn = document.getElementById('promptSaveBtn');
+      const status = document.getElementById('promptSaveStatus');
+      const text = document.getElementById('promptTextarea').value;
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      status.className = 'prompt-save-status';
+      status.textContent = '';
+
+      try {
+        const res = await fetch('/api/prompts/' + currentRole, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-password': adminPw,
+          },
+          body: JSON.stringify({ prompt_text: text }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Save failed');
+        }
+
+        const saved = await res.json();
+        promptCache[currentRole] = saved;
+        promptDirty = false;
+
+        // Update last edited
+        if (saved.last_edited) {
+          const d = new Date(saved.last_edited);
+          document.getElementById('promptLastEdited').textContent = 'Last edited: ' + d.toLocaleString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric',
+            hour: 'numeric', minute: '2-digit',
+          });
+        }
+
+        status.textContent = 'Saved!';
+        status.className = 'prompt-save-status visible success';
+        setTimeout(() => { status.className = 'prompt-save-status'; }, 3000);
+      } catch (err) {
+        status.textContent = 'Error: ' + err.message;
+        status.className = 'prompt-save-status visible error';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+      }
+    }
+
+    async function resetPrompt() {
+      if (!confirm('Reset the ' + currentRole.replace('_', ' ') + ' prompt to its original default? This cannot be undone.')) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/prompts/' + currentRole + '/reset', {
+          method: 'POST',
+          headers: { 'x-admin-password': adminPw },
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Reset failed');
+        }
+
+        const saved = await res.json();
+        promptCache[currentRole] = saved;
+        displayPrompt(currentRole);
+        promptDirty = false;
+
+        const status = document.getElementById('promptSaveStatus');
+        status.textContent = 'Reset to default!';
+        status.className = 'prompt-save-status visible success';
+        setTimeout(() => { status.className = 'prompt-save-status'; }, 3000);
+      } catch (err) {
+        const status = document.getElementById('promptSaveStatus');
+        status.textContent = 'Error: ' + err.message;
+        status.className = 'prompt-save-status visible error';
+      }
     }
   </script>
 </body>
