@@ -704,6 +704,51 @@ app.post('/poll', async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/test/:webhookId — fires a sample meeting through the user's
+// role-specific prompt and emails them. Used by the setup wizard's
+// "I'm Done! Test it" button to verify the full Claude+Resend pipeline.
+// ---------------------------------------------------------------------------
+app.post('/api/test/:webhookId', async (req, res) => {
+  const { webhookId } = req.params;
+  const user = db.findByWebhookId(webhookId);
+  if (!user) {
+    return res.status(404).json({ error: 'Unknown webhook ID' });
+  }
+
+  const testTranscript = `
+Gilbert: Alright, let's review where we are. Sarah, where are we on the proposal?
+Sarah: I've been working on it but ran into some issues with the pricing model.
+Gilbert: What kind of issues?
+Sarah: The customer wants a 15% discount. I'm not sure if I should approve it.
+Gilbert: I'll handle that one — let me jump in directly with the customer.
+Mike: We're also a week behind on implementation. The vendor missed their deadline.
+Gilbert: Okay, I'll call the vendor too and push them.
+Sarah: We also still need someone to put together the deck for the board meeting.
+Gilbert: I can do that this weekend. Let's pick this all back up Thursday.
+  `.trim();
+
+  try {
+    const rolePrompt = getPromptForUser(user);
+    const scorecard = await scoreTranscript(testTranscript, rolePrompt);
+    if (!scorecard.meeting_summary) {
+      scorecard.meeting_summary = 'Meeting Coach Setup Test';
+    }
+    const messageId = await sendEmail(scorecard, user.email);
+    console.log(`[test] sent to ${user.email}: ${messageId}`);
+    res.json({
+      success: true,
+      messageId,
+      email: user.email,
+      overall_grade: scorecard.overall_grade,
+      overall_score: scorecard.overall_score,
+    });
+  } catch (err) {
+    console.error(`[test] failed for ${user.name}: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Test endpoint — sends a sample coaching email
 // ---------------------------------------------------------------------------
 app.post('/test', async (_req, res) => {
@@ -1101,6 +1146,7 @@ function getSetupPage() {
       <div class="step-dot" data-step="3"></div>
       <div class="step-dot" data-step="4"></div>
       <div class="step-dot" data-step="5"></div>
+      <div class="step-dot" data-step="6"></div>
     </div>
     <div class="card">
 
@@ -1260,6 +1306,46 @@ function getSetupPage() {
         <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-top:12px;font-size:0.88rem;line-height:1.5;color:#1e40af;">
           <strong>Don't have Fathom yet?</strong> Fathom is the AI meeting assistant that records and transcribes your calls. Download it free at <a href="https://fathom.video/download" target="_blank" rel="noopener" style="color:#1B3A5C;font-weight:600;text-decoration:underline;">fathom.video/download</a>
         </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="goTo(4)">Back</button>
+          <button class="btn btn-red" id="testBtn" onclick="testConnection()">I'm Done! Test it</button>
+        </div>
+      </div>
+
+      <!-- Step 6: Congratulations -->
+      <div class="step" id="step6">
+        <div style="text-align:center;padding:8px 0 16px;">
+          <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:50%;background:#22c55e;color:#fff;font-size:32px;font-weight:800;margin-bottom:14px;">&#x2713;</div>
+          <h2 style="text-align:center;color:#22c55e;margin-bottom:6px;">Test Successful!</h2>
+          <p class="subtitle" style="text-align:center;margin-bottom:0;">A sample coaching email is on its way.</p>
+        </div>
+
+        <div class="confirm-section" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+          <div class="label" style="color:#166534;">Test Email Sent To</div>
+          <div class="value" id="confirmTestEmail" style="color:#166534;"></div>
+        </div>
+
+        <div id="testScoreSummary" style="display:none;background:#1f2937;color:#fff;border-radius:8px;padding:16px 18px;margin-bottom:16px;text-align:center;">
+          <div style="color:#9ca3af;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Sample Scorecard</div>
+          <div style="display:flex;justify-content:center;align-items:baseline;gap:8px;">
+            <span id="testScore" style="font-size:1.8rem;font-weight:800;color:#22c55e;"></span>
+            <span style="color:#9ca3af;">/10</span>
+            <span id="testGrade" style="font-size:1rem;font-weight:600;margin-left:8px;"></span>
+          </div>
+        </div>
+
+        <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;font-size:0.88rem;line-height:1.5;color:#1e40af;">
+          <strong style="color:#1e3a8a;">Your AI coach is ready.</strong> Once you finish connecting the Fathom webhook (previous step), you'll get a coaching email like this one after every recorded meeting.
+        </div>
+
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-top:12px;font-size:0.85rem;line-height:1.5;color:#92400e;">
+          <strong>Don't see the email?</strong> Check your spam folder, or filter by "Meeting Coach". Email arrives within ~1 minute.
+        </div>
+
+        <div class="btn-row">
+          <a href="/setup" class="btn btn-secondary" style="text-decoration:none;text-align:center;line-height:1.6;">Set Up Another User</a>
+          <button class="btn btn-primary" onclick="window.close()">Done</button>
+        </div>
       </div>
 
     </div>
@@ -1268,6 +1354,8 @@ function getSetupPage() {
   <script>
     let currentStep = 1;
     let selectedRole = '';
+    let currentWebhookId = '';
+    let currentEmail = '';
 
     function goTo(step) {
       // Validate before advancing
@@ -1379,11 +1467,44 @@ function getSetupPage() {
         document.getElementById('confirmRole').textContent = roleNames[data.role] || data.role;
         document.getElementById('webhookUrl').textContent = data.webhook_url;
 
+        currentWebhookId = data.webhook_id;
+        currentEmail = data.email;
+
         goTo(5);
       } catch (err) {
         alert('Error: ' + err.message);
         btn.disabled = false;
         btn.textContent = 'Create My Coach';
+      }
+    }
+
+    async function testConnection() {
+      const btn = document.getElementById('testBtn');
+      btn.disabled = true;
+      btn.textContent = 'Sending test email...';
+
+      try {
+        const res = await fetch('/api/test/' + currentWebhookId, {
+          method: 'POST',
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Test failed');
+        }
+        const data = await res.json();
+
+        document.getElementById('confirmTestEmail').textContent = data.email || currentEmail;
+        if (data.overall_score && data.overall_grade) {
+          document.getElementById('testScore').textContent = data.overall_score;
+          document.getElementById('testGrade').textContent = data.overall_grade;
+          document.getElementById('testScoreSummary').style.display = 'block';
+        }
+
+        goTo(6);
+      } catch (err) {
+        alert('Test failed: ' + err.message + '. Your account is still set up — you can try again or wait for a real meeting.');
+        btn.disabled = false;
+        btn.textContent = "I'm Done! Test it";
       }
     }
 
