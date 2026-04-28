@@ -1335,8 +1335,8 @@ function getSetupPage() {
       ];
       return sections
         .filter(s => s.value)
-        .map(s => s.label + ':\n' + s.value)
-        .join('\n\n');
+        .map(s => s.label + ':\\n' + s.value)
+        .join('\\n\\n');
     }
 
     async function submitSetup() {
