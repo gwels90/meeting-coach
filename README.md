@@ -97,19 +97,20 @@ Prompt placeholders:
 | GET | `/health` | — | `{status:"ok"}` |
 | POST | `/webhook` | HMAC | Gil's original Fathom webhook (executive prompt, hardcoded) |
 | POST | `/webhook/:webhookId` | HMAC | Multi-tenant — webhook_id resolves to a user |
-| GET | `/setup` | — | 5-step user setup wizard (HTML) |
+| GET | `/setup` | — | 6-step user setup wizard (HTML) |
 | GET | `/admin` | password | Admin dashboard (HTML, password-gated client-side) |
-| POST | `/api/users` | — | Create user — returns `{id, webhook_url, ...}` |
+| POST | `/api/users` | — | Create user — returns `{id, webhook_id, webhook_url, ...}` |
 | GET | `/api/users` | admin | List users |
 | PUT | `/api/users/:id/toggle` | admin | Flip active/inactive |
-| GET | `/api/prompts` | admin | List all 4 role prompts |
+| POST | `/api/test/:webhookId` | — | Sends a sample meeting through the user's role-specific prompt and emails them. Used by the wizard's "I'm Done! Test it" button. |
+| GET | `/api/prompts` | admin | List all 6 role prompts |
 | GET | `/api/prompts/:role` | admin | One prompt |
 | POST | `/api/prompts/:role` | admin | Update prompt text |
 | POST | `/api/prompts/:role/reset` | admin | Reset to hardcoded default |
 | POST | `/rollup/all` | admin | Trigger weekly rollup for all active users |
 | POST | `/rollup/:userId` | admin | Trigger rollup for one user |
 | POST | `/poll` | — | Trigger Fathom poll now |
-| POST | `/test` | — | Send a sample coaching email |
+| POST | `/test` | — | Send a sample coaching email (legacy — Gil's hardcoded executive role) |
 | POST | `/reset` | — | Clear processed-meetings list |
 
 Admin auth = `X-Admin-Password` header or `?password=` query, checked against `ADMIN_PASSWORD`.
@@ -190,11 +191,14 @@ State files (created at runtime; ignored by git):
 
 ## Setup Wizard Flow (`/setup`)
 
-1. Welcome screen
-2. Name + email
-3. Role picker (4 cards)
-4. Optional custom context (free-text — direct reports, current goals, etc.)
-5. Confirmation — shows the user's unique `webhook_url`. They paste this into Fathom → Settings → Integrations → Webhooks.
+1. **Welcome** screen
+2. **Name + email**
+3. **Role picker** — 6 cards (sales rep, sales manager, executive, marketing, executive assistant, team manager)
+4. **Personal context questionnaire** — 7 optional fields (job title, reports to, works closely with, day-to-day, current goals, anything else, job description with .txt/.md upload). All answers are concatenated into a labeled `custom_context` block stored on the user and injected into the AI prompt before each meeting analysis.
+5. **Confirmation + Fathom instructions** — shows the user's unique `webhook_url`. They paste it into **Fathom → click name (bottom-left) → Settings → API Access → Generate API Key → Manage → Add Webhook → paste into Destination URL → check Include summary + Include transcript → Save**. Direct link: `https://fathom.video/customize#api-access-header`. Has a Back button and an **I'm Done! Test it** button.
+6. **Test successful / congratulations** — fires `POST /api/test/:webhookId`, which runs a sample transcript through Claude with the user's role prompt and emails the resulting scorecard. Shows the sample's `score/10` + grade so the user can confirm Anthropic + Resend + email delivery all work.
+
+The earlier "Fathom → Settings → Integrations → Webhooks" path is **wrong** — that section does not exist in Fathom. Use the API Access path above.
 
 ---
 
@@ -202,7 +206,7 @@ State files (created at runtime; ignored by git):
 
 - Stats: total users, active count, total meetings processed, distinct roles
 - Users table: name, email, role badge, webhook URL (click to copy), meeting count, created date, active toggle
-- **Prompt editor**: 4 tabs (one per role), monospace textarea, live placeholder detector (warns if `{transcript}` is missing), Save / Reset-to-default buttons. Edits take effect for the next meeting.
+- **Prompt editor**: 6 tabs (one per role), monospace textarea, live placeholder detector (warns if `{transcript}` is missing), Save / Reset-to-default buttons. Edits take effect for the next meeting.
 
 ---
 
@@ -242,3 +246,4 @@ Manual trigger: `POST /rollup/all?days=7` (admin) or `POST /rollup/:userId?days=
 - The legacy `/webhook` endpoint hardcodes Gil's name + email + role on archive writes. Multi-tenant `/webhook/:webhookId` should be preferred for new users.
 - The 50K-char transcript truncation is a hard cap — long meetings get tail-truncated with a marker line. Watch for this on day-long workshops.
 - Webhook signature verification accepts any of 4 header names — Fathom has changed them over time.
+- **`getSetupPage()` and `getAdminPage()` return the wizard/admin HTML inside a Node template literal.** Any inline `<script>` JS that uses `\n` inside single-quoted strings must escape the backslash (write `'\\n'` in the source) — otherwise Node interprets `\n` as a real newline at template-literal evaluation time, the browser then sees a broken multi-line single-quoted string, and the entire `<script>` fails to parse. This bit us once on Apr 28 2026 — the wizard's `assembleCustomContext()` used `'\n'` and silently broke every button on the page.
