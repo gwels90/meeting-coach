@@ -511,7 +511,7 @@ app.post('/api/users', (req, res) => {
     return res.status(400).json({ error: 'name, email, and role are required' });
   }
 
-  const validRoles = ['sales_rep', 'sales_manager', 'executive', 'marketing'];
+  const validRoles = ['sales_rep', 'sales_manager', 'executive', 'marketing', 'executive_assistant', 'team_manager'];
   if (!validRoles.includes(role)) {
     return res.status(400).json({ error: `role must be one of: ${validRoles.join(', ')}` });
   }
@@ -1159,6 +1159,14 @@ function getSetupPage() {
             <h3>Marketing / Content</h3>
             <p>Score your campaign thinking, data-driven decisions, prioritization, and cross-team collaboration.</p>
           </div>
+          <div class="role-card" data-role="executive_assistant" onclick="selectRole(this)">
+            <h3>Executive Assistant</h3>
+            <p>Score your anticipation, meeting orchestration, gatekeeping, follow-through, and executive alignment.</p>
+          </div>
+          <div class="role-card" data-role="team_manager" onclick="selectRole(this)">
+            <h3>Team Manager</h3>
+            <p>Score your coaching, goal alignment, accountability, blocker resolution, and team motivation.</p>
+          </div>
         </div>
         <div class="btn-row">
           <button class="btn btn-secondary" onclick="goTo(2)">Back</button>
@@ -1166,14 +1174,51 @@ function getSetupPage() {
         </div>
       </div>
 
-      <!-- Step 4: Optional context -->
+      <!-- Step 4: Personal context questionnaire -->
       <div class="step" id="step4">
-        <h2>Personal Context <span style="font-weight:400;color:#9ca3af;font-size:0.9rem;">(Optional)</span></h2>
-        <p class="subtitle">Add anything you want your coach to know. This makes feedback more relevant to your situation.</p>
-        <div class="input-group">
-          <label for="customContext">Your Context</label>
-          <textarea id="customContext" placeholder="Examples:&#10;- My direct reports are [names]&#10;- My quarterly goal is [target]&#10;- I'm focused on [key project or vertical] this quarter"></textarea>
+        <h2>Tell Your Coach About You <span style="font-weight:400;color:#9ca3af;font-size:0.9rem;">(All Fields Optional)</span></h2>
+        <p class="subtitle">The more your coach knows about you, the more specific your feedback. Skip anything that doesn't apply.</p>
+
+        <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:0.85rem;line-height:1.5;color:#1e40af;">
+          <strong style="color:#1e3a8a;">How this gets used:</strong> Your answers are added to the AI prompt your coach uses to score every meeting. It already knows your role and ValveMan basics &mdash; this layer makes feedback specific to YOU.
         </div>
+
+        <div class="input-group">
+          <label for="jobTitle">Your specific job title</label>
+          <input type="text" id="jobTitle" placeholder="e.g. Senior Sales Engineer, Director of Marketing, Chief of Staff"/>
+        </div>
+
+        <div class="input-group">
+          <label for="reportsTo">Who do you report to (or work for)?</label>
+          <input type="text" id="reportsTo" placeholder="e.g. Jason Welsford (President), or 'I support Gil Welsford'"/>
+        </div>
+
+        <div class="input-group">
+          <label for="worksWith">Who do you work with most closely?</label>
+          <input type="text" id="worksWith" placeholder="e.g. Sales team (Josh, Cleon, Amr), Operations, Engineering"/>
+        </div>
+
+        <div class="input-group">
+          <label for="dayToDay">What do you do day-to-day?</label>
+          <textarea id="dayToDay" placeholder="A few sentences on your main responsibilities and what a typical week looks like" style="min-height:80px;"></textarea>
+        </div>
+
+        <div class="input-group">
+          <label for="currentGoals">Top 2-3 goals you're focused on right now</label>
+          <textarea id="currentGoals" placeholder="e.g.&#10;- Hit $500K in pipeline by end of quarter&#10;- Launch the new collection page&#10;- Reduce response time below 2 hrs" style="min-height:80px;"></textarea>
+        </div>
+
+        <div class="input-group">
+          <label for="extraContext">Anything else your coach should know?</label>
+          <textarea id="extraContext" placeholder="Industry quirks, ongoing projects, customers or accounts you focus on, etc." style="min-height:60px;"></textarea>
+        </div>
+
+        <div class="input-group">
+          <label for="jobDescription">Job description <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+          <input type="file" id="jdFile" accept=".txt,.md" style="margin-bottom:8px;display:block;font-size:0.85rem;"/>
+          <textarea id="jobDescription" placeholder="Paste your full job description here, OR upload a .txt / .md file above. (For PDF or DOCX, copy-paste the text into this box.)" style="min-height:100px;"></textarea>
+        </div>
+
         <div class="btn-row">
           <button class="btn btn-secondary" onclick="goTo(3)">Back</button>
           <button class="btn btn-red" id="submitBtn" onclick="submitSetup()">Create My Coach</button>
@@ -1203,8 +1248,14 @@ function getSetupPage() {
           <button class="copy-btn" onclick="copyUrl()">Copy</button>
         </div>
         <div class="instructions">
-          <strong>Next step:</strong> Copy the URL above and paste it into your Fathom webhook settings.<br/>
-          Go to <strong>Fathom &rarr; Settings &rarr; Integrations &rarr; Webhooks</strong> and add a new webhook with this URL. That's it &mdash; you'll start getting coaching emails after your next recorded meeting.
+          <strong>Connect this URL to Fathom &mdash; takes about 60 seconds:</strong>
+          <ol style="margin:10px 0 0 22px;padding:0;">
+            <li style="margin-bottom:8px;">Open <a href="https://fathom.video/customize#api-access-header" target="_blank" rel="noopener" style="color:#1B3A5C;font-weight:600;text-decoration:underline;">Fathom Settings &rarr; API Access</a> (or in Fathom: click your name in the bottom-left &rarr; <strong>Settings</strong> &rarr; <strong>API Access</strong>).</li>
+            <li style="margin-bottom:8px;">If you haven't already, click <strong>Generate API Key</strong>. Once a key exists, click <strong>Manage</strong> next to it.</li>
+            <li style="margin-bottom:8px;">Click <strong>Add Webhook</strong> and paste the URL above into the <strong>Destination URL</strong> field.</li>
+            <li style="margin-bottom:8px;">Make sure <strong>Include summary</strong> and <strong>Include transcript</strong> are both checked, then click <strong>Save</strong>.</li>
+          </ol>
+          <div style="margin-top:10px;font-size:0.85rem;">That's it &mdash; you'll get a coaching email after your next recorded meeting.</div>
         </div>
         <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px;margin-top:12px;font-size:0.88rem;line-height:1.5;color:#1e40af;">
           <strong>Don't have Fathom yet?</strong> Fathom is the AI meeting assistant that records and transcribes your calls. Download it free at <a href="https://fathom.video/download" target="_blank" rel="noopener" style="color:#1B3A5C;font-weight:600;text-decoration:underline;">fathom.video/download</a>
@@ -1249,11 +1300,43 @@ function getSetupPage() {
     document.getElementById('userName').addEventListener('input', checkStep2);
     document.getElementById('userEmail').addEventListener('input', checkStep2);
 
+    // Read .txt / .md job description file into the textarea
+    document.getElementById('jdFile').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 200000) {
+        alert('File too large. Please upload a file under 200 KB, or copy-paste the content.');
+        e.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        document.getElementById('jobDescription').value = evt.target.result;
+      };
+      reader.readAsText(file);
+    });
+
     function selectRole(el) {
       document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
       el.classList.add('selected');
       selectedRole = el.dataset.role;
       document.getElementById('step3Next').disabled = false;
+    }
+
+    function assembleCustomContext() {
+      const sections = [
+        { label: 'JOB TITLE', value: document.getElementById('jobTitle').value.trim() },
+        { label: 'REPORTS TO / WORKS FOR', value: document.getElementById('reportsTo').value.trim() },
+        { label: 'WORKS CLOSELY WITH', value: document.getElementById('worksWith').value.trim() },
+        { label: 'DAY-TO-DAY RESPONSIBILITIES', value: document.getElementById('dayToDay').value.trim() },
+        { label: 'CURRENT GOALS', value: document.getElementById('currentGoals').value.trim() },
+        { label: 'ADDITIONAL CONTEXT', value: document.getElementById('extraContext').value.trim() },
+        { label: 'JOB DESCRIPTION', value: document.getElementById('jobDescription').value.trim() },
+      ];
+      return sections
+        .filter(s => s.value)
+        .map(s => s.label + ':\n' + s.value)
+        .join('\n\n');
     }
 
     async function submitSetup() {
@@ -1265,7 +1348,7 @@ function getSetupPage() {
         name: document.getElementById('userName').value.trim(),
         email: document.getElementById('userEmail').value.trim(),
         role: selectedRole,
-        custom_context: document.getElementById('customContext').value.trim(),
+        custom_context: assembleCustomContext(),
       };
 
       try {
@@ -1288,6 +1371,8 @@ function getSetupPage() {
           sales_manager: 'Sales Manager',
           executive: 'Executive / Leadership',
           marketing: 'Marketing / Content',
+          executive_assistant: 'Executive Assistant',
+          team_manager: 'Team Manager',
         };
         document.getElementById('confirmName').textContent = data.name;
         document.getElementById('confirmEmail').textContent = data.email;
@@ -1532,6 +1617,8 @@ function getAdminPage() {
     .role-sales_manager { background: #fce7f3; color: #9d174d; }
     .role-executive { background: #ede9fe; color: #6d28d9; }
     .role-marketing { background: #d1fae5; color: #065f46; }
+    .role-executive_assistant { background: #fef3c7; color: #92400e; }
+    .role-team_manager { background: #cffafe; color: #155e75; }
 
     .status-badge {
       display: inline-flex;
@@ -1819,11 +1906,13 @@ function getAdminPage() {
           <div class="prompt-warning">
             <strong>Warning:</strong> Changes take effect immediately for all future meetings. Active users will get the updated prompt on their next meeting.
           </div>
-          <div class="prompt-tabs" id="promptTabs">
+          <div class="prompt-tabs" id="promptTabs" style="flex-wrap:wrap;">
             <button class="prompt-tab active" data-role="sales_rep" onclick="switchPromptTab('sales_rep')">Sales Rep</button>
             <button class="prompt-tab" data-role="sales_manager" onclick="switchPromptTab('sales_manager')">Sales Manager</button>
             <button class="prompt-tab" data-role="executive" onclick="switchPromptTab('executive')">Executive</button>
             <button class="prompt-tab" data-role="marketing" onclick="switchPromptTab('marketing')">Marketing</button>
+            <button class="prompt-tab" data-role="executive_assistant" onclick="switchPromptTab('executive_assistant')">Executive Assistant</button>
+            <button class="prompt-tab" data-role="team_manager" onclick="switchPromptTab('team_manager')">Team Manager</button>
           </div>
           <div class="prompt-editor-body">
             <textarea class="prompt-textarea" id="promptTextarea" spellcheck="false" placeholder="Loading prompt..."></textarea>
@@ -1905,6 +1994,8 @@ function getAdminPage() {
         sales_manager: 'Sales Mgr',
         executive: 'Executive',
         marketing: 'Marketing',
+        executive_assistant: 'EA',
+        team_manager: 'Team Mgr',
       };
 
       let html = '<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Webhook URL</th><th>Meetings</th><th>Created</th><th>Status</th></tr></thead><tbody>';

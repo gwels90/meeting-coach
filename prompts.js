@@ -41,6 +41,24 @@ const ROLE_DIMENSIONS = {
     'accountability',
     'channel_expertise',
   ],
+  executive_assistant: [
+    'anticipation',
+    'meeting_orchestration',
+    'gatekeeping',
+    'communication_clarity',
+    'follow_through',
+    'discretion',
+    'executive_alignment',
+  ],
+  team_manager: [
+    'coaching_quality',
+    'goal_alignment',
+    'accountability',
+    'meeting_structure',
+    'blocker_resolution',
+    'team_motivation',
+    'cross_functional_communication',
+  ],
 };
 
 // ---------------------------------------------------------------------------

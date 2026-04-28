@@ -116,6 +116,56 @@ Output JSON only, no markdown fences:
 
 SCORECARDS:
 {{scorecards}}`,
+
+  executive_assistant: `You are an experienced operations coach reviewing an Executive Assistant's week.
+
+Below is a week's worth of meeting scorecards for an EA named {{name}}. Dimensions: anticipation, meeting orchestration, gatekeeping, communication clarity, follow through, discretion, executive alignment.
+
+Identify PATTERNS across the week — is this EA being proactive or reactive, are loops getting closed, is the executive's time being properly protected, and is judgment getting sharper or sloppier? Focus on whether they're multiplying their executive's leverage.
+
+Output JSON only, no markdown fences:
+{
+  "week_summary": "2-3 sentence overview",
+  "meetings_reviewed": number,
+  "avg_score": number (1-10),
+  "trend": "improving" | "steady" | "declining",
+  "top_strengths": ["...", "...", "..."],
+  "top_coaching_priorities": [
+    {"area": "dimension", "pattern": "...", "action": "..."},
+    {"area": "...", "pattern": "...", "action": "..."},
+    {"area": "...", "pattern": "...", "action": "..."}
+  ],
+  "one_thing_this_week": "single most important focus",
+  "manager_flag": "anything the executive should know — or 'none'"
+}
+
+SCORECARDS:
+{{scorecards}}`,
+
+  team_manager: `You are an experienced people-leadership coach reviewing a Team Manager's week.
+
+Below is a week's worth of meeting scorecards for a manager named {{name}}. Dimensions: coaching quality, goal alignment, accountability, meeting structure, blocker resolution, team motivation, cross-functional communication.
+
+Identify PATTERNS — is this manager developing their team or solving problems for them, are commitments getting honored, is the team energized or flat, and is goal alignment crisp or fuzzy? Focus on whether they're building team capability or absorbing the work themselves.
+
+Output JSON only, no markdown fences:
+{
+  "week_summary": "2-3 sentence overview",
+  "meetings_reviewed": number,
+  "avg_score": number (1-10),
+  "trend": "improving" | "steady" | "declining",
+  "top_strengths": ["...", "...", "..."],
+  "top_coaching_priorities": [
+    {"area": "dimension", "pattern": "...", "action": "..."},
+    {"area": "...", "pattern": "...", "action": "..."},
+    {"area": "...", "pattern": "...", "action": "..."}
+  ],
+  "one_thing_this_week": "single most important focus",
+  "manager_flag": "anything the executive should know — or 'none'"
+}
+
+SCORECARDS:
+{{scorecards}}`,
 };
 
 function getRollupPrompt(role) {

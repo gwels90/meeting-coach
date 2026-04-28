@@ -55,7 +55,7 @@ GitHub PUT to `gwels90/meeting-coach-archive` (or whatever `GITHUB_ARCHIVE_REPO`
 
 ## Roles & Scoring Dimensions
 
-All four prompts are editable live from `/admin`. Defaults live in `prompts-db.js`.
+All six prompts are editable live from `/admin`. Defaults live in `prompts-db.js`.
 
 | Role | Dimensions |
 |------|------------|
@@ -63,6 +63,8 @@ All four prompts are editable live from `/admin`. Defaults live in `prompts-db.j
 | `sales_rep` | discovery_quality, objection_handling, value_communication, pipeline_discipline, next_steps_followup, professionalism_tone, product_knowledge |
 | `sales_manager` | coaching_quality, accountability, meeting_structure, time_management, blocker_resolution, team_energy, professionalism_tone |
 | `marketing` | strategic_alignment, data_driven_thinking, creative_quality, cross_team_collaboration, prioritization, accountability, channel_expertise |
+| `executive_assistant` | anticipation, meeting_orchestration, gatekeeping, communication_clarity, follow_through, discretion, executive_alignment |
+| `team_manager` | coaching_quality, goal_alignment, accountability, meeting_structure, blocker_resolution, team_motivation, cross_functional_communication |
 
 Every prompt outputs the same shape:
 ```json
